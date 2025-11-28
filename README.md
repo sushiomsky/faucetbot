@@ -4,8 +4,9 @@ Automated faucet roll, cashout, and withdrawal bot for [DuckDice.io](https://duc
 
 ## Features
 
+- **Progressive Win Chance Strategy**: Rolls faucets all-in with increasing odds (0.01%, 0.02%, 0.03%, ...)
 - **Faucet Balance Check**: Automatically detects all currencies with faucet balance
-- **All-In Roll**: Bets the full faucet balance with configurable win chance
+- **All-In Roll**: Bets the full faucet balance for maximum potential gains
 - **Auto Cashout**: Transfers faucet balance to main balance when USD threshold is met
 - **Auto Withdrawal**: Optionally withdraws from main balance to your wallet
 - **Price Tracking**: Real-time USD value calculation via CoinGecko API
@@ -39,16 +40,17 @@ cp .env.example .env
 # Required
 DUCKDICE_API_KEY=your-api-key-here
 
-# Optional - Betting
-FAUCET_WIN_CHANCE=50.0          # Win chance percentage (default: 50)
+# Optional - Progressive Win Chance Strategy
+FAUCET_BASE_WIN_CHANCE=0.01       # Base win chance for 1st faucet (default: 0.01%)
+FAUCET_WIN_CHANCE_INCREMENT=0.01  # Increment per faucet (default: 0.01%)
 
 # Optional - Cashout
-FAUCET_CASHOUT_MIN_USD=20.0     # Min USD to trigger cashout (default: 20)
+FAUCET_CASHOUT_MIN_USD=20.0       # Min USD to trigger cashout (default: 20)
 
 # Optional - Withdrawal
-AUTO_WITHDRAW=false              # Enable auto-withdrawal
-WITHDRAWAL_ADDRESS=your-wallet  # Your wallet address
-WITHDRAWAL_MIN_USD=20.0          # Min USD to trigger withdrawal
+AUTO_WITHDRAW=false               # Enable auto-withdrawal
+WITHDRAWAL_ADDRESS=your-wallet   # Your wallet address
+WITHDRAWAL_MIN_USD=20.0           # Min USD to trigger withdrawal
 ```
 
 Get your API key from: https://duckdice.io (Account Settings → Bot API)
@@ -69,9 +71,9 @@ Shows all currencies with faucet balance and their USD values.
 faucetbot run
 ```
 
-Processes all faucet balances once:
+Processes all faucet balances once with progressive win chances:
 1. Checks each currency with faucet balance
-2. Bets all-in with configured win chance
+2. Bets all-in with progressive win chance (1st: 0.01%, 2nd: 0.02%, ...)
 3. Cashes out to main if balance >= $20 USD
 4. Withdraws to wallet if configured
 
@@ -87,11 +89,14 @@ Options:
 - `--interval SECONDS`: Time between passes (default: 60)
 - `--stop-on-cashout`: Stop after a successful cashout
 - `--max-iterations N`: Maximum number of passes
+- `--base-chance PCT`: Override base win chance (default: 0.01%)
+- `--chance-increment PCT`: Override win chance increment (default: 0.01%)
 
 ### Roll Specific Currency
 
 ```bash
 faucetbot roll btc
+faucetbot roll btc --chance 1.5  # Roll with custom 1.5% win chance
 ```
 
 Roll only a specific currency's faucet balance.
@@ -99,13 +104,28 @@ Roll only a specific currency's faucet balance.
 ### Override Settings
 
 ```bash
-faucetbot run --chance 75 --cashout-min 10
+faucetbot run --base-chance 0.02 --chance-increment 0.02 --cashout-min 10
 ```
 
-- `--chance`: Override win chance percentage
+- `--base-chance`: Override base win chance percentage
+- `--chance-increment`: Override win chance increment
 - `--cashout-min`: Override minimum USD for cashout
 
 ## How It Works
+
+### Progressive Win Chance Strategy
+
+The bot uses a progressive betting strategy where each faucet is rolled with an increasing win chance:
+
+| Faucet # | Win Chance | Potential Payout |
+|----------|------------|------------------|
+| 1st      | 0.01%      | ~9900x           |
+| 2nd      | 0.02%      | ~4950x           |
+| 3rd      | 0.03%      | ~3300x           |
+| 4th      | 0.04%      | ~2475x           |
+| ...      | ...        | ...              |
+
+This strategy aims for high-payout wins while spreading risk across multiple low-probability bets.
 
 ### Faucet Claiming (Manual)
 
@@ -116,18 +136,12 @@ Currently, claiming faucets must be done manually on the DuckDice website. There
 1. **Check Balances**: Bot queries the API for all currency balances
 2. **Filter Faucets**: Identifies currencies with non-zero faucet balance
 3. **Roll**: For each faucet balance:
-   - Places an all-in bet at the configured win chance
-   - Win chance of 50% gives ~1.98x payout
+   - Places an all-in bet with progressive win chance
+   - 1st faucet: 0.01%, 2nd: 0.02%, 3rd: 0.03%, etc.
 4. **Cashout**: If the faucet balance USD value >= threshold:
    - Transfers faucet balance to main balance
 5. **Withdraw** (optional): If main balance >= threshold:
    - Initiates withdrawal to configured wallet
-
-### Win Chance Strategy
-
-- **50%** (default): Balanced risk/reward, ~1.98x payout on win
-- **75%**: Lower risk, ~1.32x payout on win
-- **25%**: Higher risk, ~3.96x payout on win
 
 ## API Endpoints Used
 

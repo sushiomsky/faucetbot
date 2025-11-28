@@ -55,20 +55,29 @@ def main(args: Optional[list[str]] = None) -> int:
     
     parser = argparse.ArgumentParser(
         prog="faucetbot",
-        description="DuckDice faucet roll automation bot",
+        description="DuckDice faucet roll automation bot with progressive win chance strategy",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  faucetbot run                  # Run single pass over all faucet balances
+  faucetbot run                  # Run single pass (progressive: 0.01%, 0.02%, ...)
   faucetbot run --continuous     # Run continuously
   faucetbot status               # Show current faucet balances
   faucetbot roll btc             # Roll specific currency only
+  faucetbot roll btc --chance 1  # Roll with custom 1% win chance
+
+Progressive Strategy:
+  Faucets are rolled all-in with increasing win chances:
+  - 1st faucet: 0.01% (base chance)
+  - 2nd faucet: 0.02% (base + increment)
+  - 3rd faucet: 0.03% (base + 2*increment)
+  - And so on...
 
 Environment Variables:
   DUCKDICE_API_KEY              API key (required)
   DUCKDICE_BASE_URL             API base URL
   DUCKDICE_TIMEOUT              Request timeout (seconds)
-  FAUCET_WIN_CHANCE             Win chance percentage (default: 50)
+  FAUCET_BASE_WIN_CHANCE        Base win chance for 1st faucet (default: 0.01)
+  FAUCET_WIN_CHANCE_INCREMENT   Win chance increment per faucet (default: 0.01)
   FAUCET_CASHOUT_MIN_USD        Min USD for cashout (default: 20)
   AUTO_WITHDRAW                 Enable auto-withdrawal (default: false)
   WITHDRAWAL_ADDRESS            Wallet address for withdrawal
@@ -108,10 +117,16 @@ Environment Variables:
         help="Maximum number of iterations",
     )
     run_parser.add_argument(
-        "--chance",
+        "--base-chance",
         type=float,
         default=None,
-        help="Win chance percentage (overrides FAUCET_WIN_CHANCE)",
+        help="Base win chance for first faucet (default: 0.01%%)",
+    )
+    run_parser.add_argument(
+        "--chance-increment",
+        type=float,
+        default=None,
+        help="Win chance increment per faucet (default: 0.01%%)",
     )
     run_parser.add_argument(
         "--cashout-min",
@@ -159,9 +174,10 @@ Environment Variables:
     if parsed.command == "status":
         return cmd_status(api, verbose=parsed.verbose)
     elif parsed.command == "run":
-        # Create bot config
+        # Create bot config with progressive win chance strategy
         bot_config = BotConfig(
-            win_chance=parsed.chance or get_env_float("FAUCET_WIN_CHANCE", 50.0),
+            base_win_chance=parsed.base_chance or get_env_float("FAUCET_BASE_WIN_CHANCE", 0.01),
+            win_chance_increment=parsed.chance_increment or get_env_float("FAUCET_WIN_CHANCE_INCREMENT", 0.01),
             cashout_min_usd=parsed.cashout_min or get_env_float("FAUCET_CASHOUT_MIN_USD", 20.0),
             auto_withdraw=get_env_bool("AUTO_WITHDRAW", False),
             withdrawal_address=os.environ.get("WITHDRAWAL_ADDRESS", ""),
@@ -177,15 +193,18 @@ Environment Variables:
             max_iterations=parsed.max_iterations,
         )
     elif parsed.command == "roll":
+        # For single roll, use --chance if provided, otherwise use base_win_chance
+        base_chance = parsed.chance if parsed.chance else get_env_float("FAUCET_BASE_WIN_CHANCE", 0.01)
         bot_config = BotConfig(
-            win_chance=parsed.chance or get_env_float("FAUCET_WIN_CHANCE", 50.0),
+            base_win_chance=base_chance,
+            win_chance_increment=get_env_float("FAUCET_WIN_CHANCE_INCREMENT", 0.01),
             cashout_min_usd=get_env_float("FAUCET_CASHOUT_MIN_USD", 20.0),
             auto_withdraw=get_env_bool("AUTO_WITHDRAW", False),
             withdrawal_address=os.environ.get("WITHDRAWAL_ADDRESS", ""),
             withdrawal_min_usd=get_env_float("WITHDRAWAL_MIN_USD", 20.0),
             verbose=parsed.verbose,
         )
-        return cmd_roll(api, bot_config, parsed.currency)
+        return cmd_roll(api, bot_config, parsed.currency, parsed.chance)
     
     return 0
 
@@ -283,7 +302,7 @@ def cmd_run(
     return 0
 
 
-def cmd_roll(api: DuckDiceAPI, config: BotConfig, currency: str) -> int:
+def cmd_roll(api: DuckDiceAPI, config: BotConfig, currency: str, win_chance: Optional[float] = None) -> int:
     """Roll a specific currency."""
     # Note: config.verbose is already set from parsed args in main()
     bot = FaucetBot(api, config)
@@ -309,10 +328,14 @@ def cmd_roll(api: DuckDiceAPI, config: BotConfig, currency: str) -> int:
     
     print(f"Found: {target['faucet_balance']} {currency.upper()} (~${target['faucet_usd']:.4f} USD)")
     
+    # Use provided win_chance or default to base_win_chance
+    effective_chance = win_chance if win_chance is not None else config.base_win_chance
+    
     try:
-        result = bot.roll_faucet(currency.lower(), target["faucet_balance"])
+        result = bot.roll_faucet(currency.lower(), target["faucet_balance"], effective_chance)
         print()
         print("Result:", "WIN" if result.win else "LOSS")
+        print(f"  Win chance: {result.win_chance}%")
         print(f"  Roll: {result.roll_number}")
         print(f"  Profit: {result.profit}")
         print(f"  New faucet balance: {result.new_faucet_balance}")

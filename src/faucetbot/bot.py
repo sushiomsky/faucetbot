@@ -23,8 +23,10 @@ from .api import DuckDiceAPI
 @dataclass
 class BotConfig:
     """Configuration for FaucetBot."""
-    # Betting configuration
-    win_chance: float = 50.0  # Win chance percentage
+    # Betting configuration - Progressive strategy
+    # First faucet: base_win_chance (0.01%), second: 0.02%, etc.
+    base_win_chance: float = 0.01  # Starting win chance percentage
+    win_chance_increment: float = 0.01  # Increment per faucet
     bet_high: bool = True  # Bet on high numbers
     
     # Cashout thresholds
@@ -52,6 +54,7 @@ class RollResult:
     new_faucet_balance: str
     new_main_balance: str
     roll_number: int
+    win_chance: float = 0.0  # The win chance used for this roll
     cashout_triggered: bool = False
     cashout_success: bool = False
     withdrawal_triggered: bool = False
@@ -188,18 +191,19 @@ class FaucetBot:
         
         return result
 
-    def roll_faucet(self, currency: str, amount: str) -> RollResult:
+    def roll_faucet(self, currency: str, amount: str, win_chance: float) -> RollResult:
         """
         Roll the full faucet balance for a currency.
         
         Args:
             currency: Currency symbol
             amount: Amount to bet (usually full faucet balance)
+            win_chance: Win chance percentage for this roll
             
         Returns:
             RollResult with bet outcome and any triggered actions
         """
-        self.log(f"Rolling {amount} {currency.upper()} with {self.config.win_chance}% chance...")
+        self.log(f"Rolling {amount} {currency.upper()} with {win_chance}% chance...")
         
         result = RollResult(
             currency=currency,
@@ -209,6 +213,7 @@ class FaucetBot:
             new_faucet_balance="0",
             new_main_balance="0",
             roll_number=0,
+            win_chance=win_chance,
         )
         
         try:
@@ -216,7 +221,7 @@ class FaucetBot:
             response = self.api.play_dice(
                 symbol=currency,
                 amount=amount,
-                chance=str(self.config.win_chance),
+                chance=str(win_chance),
                 is_high=self.config.bet_high,
                 faucet=True,
             )
@@ -290,7 +295,7 @@ class FaucetBot:
         Run a single pass over all faucet balances.
         
         For each currency with faucet balance:
-        1. Roll all-in
+        1. Roll all-in with progressive win chance (0.01%, 0.02%, 0.03%, ...)
         2. Cashout if threshold met
         3. Withdraw if configured
         
@@ -309,6 +314,8 @@ class FaucetBot:
         for fc in faucet_currencies:
             self.log(f"  {fc['currency'].upper()}: {fc['faucet_balance']} (~${fc['faucet_usd']:.4f} USD)")
         
+        # Progressive win chance: 1st faucet = base_win_chance, 2nd = base + increment, etc.
+        faucet_index = 0
         for fc in faucet_currencies:
             currency = fc["currency"]
             amount = fc["faucet_balance"]
@@ -317,8 +324,12 @@ class FaucetBot:
             if self._to_decimal(amount) <= 0:
                 continue
             
+            faucet_index += 1
+            # Calculate progressive win chance
+            win_chance = self.config.base_win_chance + (faucet_index - 1) * self.config.win_chance_increment
+            
             try:
-                result = self.roll_faucet(currency, amount)
+                result = self.roll_faucet(currency, amount, win_chance)
                 results.append(result)
             except Exception as e:
                 self.log(f"Error processing {currency}: {e}")
@@ -342,7 +353,7 @@ class FaucetBot:
         iteration = 0
         
         self.log("Starting FaucetBot in continuous mode...")
-        self.log(f"  Win chance: {self.config.win_chance}%")
+        self.log(f"  Progressive win chance: {self.config.base_win_chance}%, +{self.config.win_chance_increment}% per faucet")
         self.log(f"  Cashout threshold: ${self.config.cashout_min_usd}")
         self.log(f"  Auto-withdraw: {self.config.auto_withdraw}")
         self.log(f"  Interval: {interval_sec}s")
