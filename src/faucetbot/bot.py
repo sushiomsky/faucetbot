@@ -62,6 +62,16 @@ class RollResult:
     usd_value: float = 0.0
 
 
+@dataclass
+class ClaimResult:
+    """Result of a faucet claim operation."""
+    currency: str
+    success: bool
+    amount: str = "0"
+    error: str = ""
+    cooldown_remaining: int = 0  # Seconds until next claim available
+
+
 class FaucetBot:
     """
     Automated faucet roll bot for DuckDice.
@@ -190,6 +200,118 @@ class FaucetBot:
             })
         
         return result
+
+    def get_faucet_info(self) -> Dict[str, Any]:
+        """
+        Get faucet info including available currencies and limits.
+        
+        Returns dict with faucet status information.
+        """
+        return self.api.get_faucet_info()
+
+    def check_faucet_claim(self, currency: str) -> Dict[str, Any]:
+        """
+        Check if faucet can be claimed for a specific currency.
+        
+        Args:
+            currency: Currency symbol (e.g., 'sol', 'btc')
+            
+        Returns:
+            Dict with claim availability info
+        """
+        return self.api.check_faucet_claim(currency)
+
+    def claim_faucet(self, currency: str) -> ClaimResult:
+        """
+        Claim the faucet for a specific currency.
+        
+        Args:
+            currency: Currency symbol to claim (e.g., 'sol', 'btc')
+            
+        Returns:
+            ClaimResult with claim outcome
+        """
+        self.log(f"Claiming faucet for {currency.upper()}...")
+        
+        result = ClaimResult(
+            currency=currency,
+            success=False,
+        )
+        
+        try:
+            # First check if claim is available
+            check_response = self.api.check_faucet_claim(currency)
+            
+            # Check if there's a cooldown or other restriction
+            if check_response.get("error"):
+                result.error = check_response.get("error", "Unknown error")
+                self.log(f"  Cannot claim: {result.error}")
+                return result
+            
+            # Attempt to claim the faucet
+            response = self.api.claim_faucet(currency)
+            
+            # Check for successful claim
+            if response.get("error"):
+                result.error = response.get("error", "Claim failed")
+                self.log(f"  Claim failed: {result.error}")
+            else:
+                result.success = True
+                # Extract amount from response
+                result.amount = str(response.get("amount", "0"))
+                self.log(f"  Successfully claimed {result.amount} {currency.upper()}!")
+                
+        except Exception as e:
+            result.error = str(e)
+            self.log(f"  Claim error: {e}")
+        
+        return result
+
+    def claim_all_faucets(self) -> List[ClaimResult]:
+        """
+        Attempt to claim faucets for all available currencies.
+        
+        Returns list of ClaimResults for each currency attempted.
+        """
+        results = []
+        
+        self.log("Fetching available faucets...")
+        
+        try:
+            faucet_info = self.api.get_faucet_info()
+            
+            # Get currencies that can be claimed
+            currencies = faucet_info.get("currencies", [])
+            if not currencies:
+                # If no currencies list, try to get from user info
+                user_info = self.api.get_user_info()
+                balances = user_info.get("balances", [])
+                currencies = [bal.get("currency") for bal in balances if bal]
+            
+            self.log(f"Found {len(currencies)} currencies to try...")
+            
+            for currency in currencies:
+                if not currency:
+                    continue
+                    
+                try:
+                    result = self.claim_faucet(currency.lower())
+                    results.append(result)
+                    
+                    # Add delay between claims to avoid rate limiting
+                    time.sleep(1)
+                except Exception as e:
+                    self.log(f"  Error claiming {currency}: {e}")
+                    results.append(ClaimResult(
+                        currency=currency,
+                        success=False,
+                        error=str(e),
+                    ))
+                    
+        except Exception as e:
+            self.log(f"Error fetching faucet info: {e}")
+        
+        return results
 
     def roll_faucet(self, currency: str, amount: str, win_chance: float) -> RollResult:
         """

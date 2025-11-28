@@ -234,3 +234,39 @@ class DuckDiceAPI:
         Returns list of currency info dicts including exchange rates.
         """
         return self._make_request("GET", "currencies")
+
+    def get_faucet_info(self) -> Dict[str, Any]:
+        """
+        Get faucet information including available currencies and limits.
+
+        Returns dict with faucet info including available faucets count.
+        """
+        return self._make_request("GET", "faucet")
+
+    def check_faucet_claim(self, symbol: str) -> Dict[str, Any]:
+        """
+        Check if faucet can be claimed for a specific currency.
+
+        Args:
+            symbol: Currency symbol (e.g., 'sol', 'btc')
+
+        Returns:
+            API response with claim availability info
+        """
+        return self._make_request("GET", f"faucet/{symbol}/check")
+
+    def claim_faucet(self, symbol: str) -> Dict[str, Any]:
+        """
+        Claim the faucet for a specific currency.
+
+        This is the actual faucet claiming operation that adds free
+        cryptocurrency to the faucet balance.
+
+        Args:
+            symbol: Currency symbol to claim faucet for (e.g., 'sol', 'btc')
+
+        Returns:
+            API response with claim result including amount received
+        """
+        data = {"symbol": symbol}
+        return self._make_request("POST", "faucet", data)

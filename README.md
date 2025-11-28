@@ -1,9 +1,10 @@
 # FaucetBot
 
-Automated faucet roll, cashout, and withdrawal bot for [DuckDice.io](https://duckdice.io).
+Automated faucet claiming, roll, cashout, and withdrawal bot for [DuckDice.io](https://duckdice.io).
 
 ## Features
 
+- **Faucet Claiming**: Automatically claim free cryptocurrency from DuckDice faucets
 - **Progressive Win Chance Strategy**: Rolls faucets all-in with increasing odds (0.01%, 0.02%, 0.03%, ...)
 - **Faucet Balance Check**: Automatically detects all currencies with faucet balance
 - **All-In Roll**: Bets the full faucet balance for maximum potential gains
@@ -64,6 +65,15 @@ faucetbot status
 ```
 
 Shows all currencies with faucet balance and their USD values.
+
+### Claim Faucets
+
+```bash
+faucetbot claim           # Claim all available faucets
+faucetbot claim sol       # Claim faucet for specific currency (e.g., SOL)
+```
+
+Claims free cryptocurrency from the DuckDice faucet. Each currency can be claimed once per minute (approximately 45-50 faucets available daily).
 
 ### Run Single Pass
 
@@ -127,24 +137,28 @@ The bot uses a progressive betting strategy where each faucet is rolled with an 
 
 This strategy aims for high-payout wins while spreading risk across multiple low-probability bets.
 
-### Faucet Claiming (Manual)
+### Faucet Claiming
 
-Currently, claiming faucets must be done manually on the DuckDice website. There are typically 40-55 faucets available daily across different cryptocurrencies.
+The bot can automatically claim faucets using the `faucetbot claim` command. There are typically 40-55 faucets available daily across different cryptocurrencies with a 60-second cooldown between claims per currency.
 
 ### Bot Workflow
 
-1. **Check Balances**: Bot queries the API for all currency balances
-2. **Filter Faucets**: Identifies currencies with non-zero faucet balance
-3. **Roll**: For each faucet balance:
+1. **Claim Faucets**: Optionally claim free cryptocurrency from available faucets
+2. **Check Balances**: Bot queries the API for all currency balances
+3. **Filter Faucets**: Identifies currencies with non-zero faucet balance
+4. **Roll**: For each faucet balance:
    - Places an all-in bet with progressive win chance
    - 1st faucet: 0.01%, 2nd: 0.02%, 3rd: 0.03%, etc.
-4. **Cashout**: If the faucet balance USD value >= threshold:
+5. **Cashout**: If the faucet balance USD value >= threshold:
    - Transfers faucet balance to main balance
-5. **Withdraw** (optional): If main balance >= threshold:
+6. **Withdraw** (optional): If main balance >= threshold:
    - Initiates withdrawal to configured wallet
 
 ## API Endpoints Used
 
+- `GET /faucet` - Get faucet info and available currencies
+- `GET /faucet/{symbol}/check` - Check if faucet can be claimed
+- `POST /faucet` - Claim faucet for a currency
 - `GET /bot/user-info` - Get user info and balances
 - `POST /dice/play` - Play dice game
 - `POST /faucet/cashout` - Transfer faucet to main balance
