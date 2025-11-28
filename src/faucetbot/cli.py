@@ -59,6 +59,8 @@ def main(args: Optional[list[str]] = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  faucetbot claim                # Claim all available faucets
+  faucetbot claim sol            # Claim faucet for specific currency
   faucetbot run                  # Run single pass (progressive: 0.01%, 0.02%, ...)
   faucetbot run --continuous     # Run continuously
   faucetbot status               # Show current faucet balances
@@ -147,6 +149,16 @@ Environment Variables:
     )
     roll_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     
+    # claim command
+    claim_parser = subparsers.add_parser("claim", help="Claim faucet for a currency")
+    claim_parser.add_argument(
+        "currency",
+        nargs="?",
+        default=None,
+        help="Currency symbol (e.g., sol, btc). If not specified, tries all currencies.",
+    )
+    claim_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    
     parsed = parser.parse_args(args)
     
     if not parsed.command:
@@ -205,6 +217,11 @@ Environment Variables:
             verbose=parsed.verbose,
         )
         return cmd_roll(api, bot_config, parsed.currency, parsed.chance)
+    elif parsed.command == "claim":
+        bot_config = BotConfig(
+            verbose=parsed.verbose,
+        )
+        return cmd_claim(api, bot_config, parsed.currency)
     
     return 0
 
@@ -346,6 +363,53 @@ def cmd_roll(api: DuckDiceAPI, config: BotConfig, currency: str, win_chance: Opt
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    
+    return 0
+
+
+def cmd_claim(api: DuckDiceAPI, config: BotConfig, currency: Optional[str] = None) -> int:
+    """Claim faucet for a specific currency or all currencies."""
+    bot = FaucetBot(api, config)
+    
+    if currency:
+        # Claim specific currency
+        print(f"Claiming faucet for {currency.upper()}...")
+        try:
+            result = bot.claim_faucet(currency.lower())
+            print()
+            if result.success:
+                print(f"Success! Claimed {result.amount} {currency.upper()}")
+            else:
+                print(f"Failed to claim: {result.error}")
+                return 1
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    else:
+        # Claim all available faucets
+        print("Claiming all available faucets...")
+        try:
+            results = bot.claim_all_faucets()
+            print()
+            
+            successful = [r for r in results if r.success]
+            failed = [r for r in results if not r.success]
+            
+            if successful:
+                print(f"Successfully claimed {len(successful)} faucet(s):")
+                for r in successful:
+                    print(f"  {r.currency.upper()}: {r.amount}")
+            
+            if failed:
+                print(f"\nFailed to claim {len(failed)} faucet(s):")
+                for r in failed:
+                    print(f"  {r.currency.upper()}: {r.error}")
+            
+            if not results:
+                print("No faucets available to claim.")
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
     
     return 0
 
