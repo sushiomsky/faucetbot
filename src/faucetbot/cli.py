@@ -11,7 +11,7 @@ from typing import Optional
 try:
     from dotenv import load_dotenv
 except ImportError:
-    load_dotenv = None  # type: ignore
+    load_dotenv = None
 
 from .api import DuckDiceAPI, DuckDiceConfig
 from .bot import FaucetBot, BotConfig
@@ -253,7 +253,7 @@ def cmd_run(
     max_iterations: Optional[int] = None,
 ) -> int:
     """Run the faucet bot."""
-    config.verbose = True
+    # Note: config.verbose is already set from parsed args in main()
     bot = FaucetBot(api, config)
     
     try:
@@ -285,7 +285,7 @@ def cmd_run(
 
 def cmd_roll(api: DuckDiceAPI, config: BotConfig, currency: str) -> int:
     """Roll a specific currency."""
-    config.verbose = True
+    # Note: config.verbose is already set from parsed args in main()
     bot = FaucetBot(api, config)
     
     # Get faucet balance for this currency

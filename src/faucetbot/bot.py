@@ -67,6 +67,38 @@ class FaucetBot:
     cashing out when profitable, and optionally withdrawing.
     """
     
+    # CoinGecko API base URL for price lookups
+    COINGECKO_API_URL = "https://api.coingecko.com/api/v3/simple/price"
+    
+    # Map common cryptocurrency symbols to CoinGecko IDs
+    COINGECKO_ID_MAP: Dict[str, str] = {
+        "btc": "bitcoin",
+        "eth": "ethereum",
+        "ltc": "litecoin",
+        "doge": "dogecoin",
+        "xrp": "ripple",
+        "trx": "tron",
+        "bnb": "binancecoin",
+        "usdt": "tether",
+        "usdc": "usd-coin",
+        "sol": "solana",
+        "ada": "cardano",
+        "dot": "polkadot",
+        "matic": "matic-network",
+        "shib": "shiba-inu",
+        "avax": "avalanche-2",
+        "link": "chainlink",
+        "xlm": "stellar",
+        "atom": "cosmos",
+        "etc": "ethereum-classic",
+        "bch": "bitcoin-cash",
+        "xmr": "monero",
+        "dash": "dash",
+        "zec": "zcash",
+        "neo": "neo",
+        "eos": "eos",
+    }
+    
     def __init__(
         self,
         api: DuckDiceAPI,
@@ -99,39 +131,10 @@ class FaucetBot:
             if (now - cache_time) < self.config.price_refresh_sec:
                 return self._price_cache[symbol_lower]
         
-        # Map common symbols to CoinGecko IDs
-        coingecko_ids = {
-            "btc": "bitcoin",
-            "eth": "ethereum",
-            "ltc": "litecoin",
-            "doge": "dogecoin",
-            "xrp": "ripple",
-            "trx": "tron",
-            "bnb": "binancecoin",
-            "usdt": "tether",
-            "usdc": "usd-coin",
-            "sol": "solana",
-            "ada": "cardano",
-            "dot": "polkadot",
-            "matic": "matic-network",
-            "shib": "shiba-inu",
-            "avax": "avalanche-2",
-            "link": "chainlink",
-            "xlm": "stellar",
-            "atom": "cosmos",
-            "etc": "ethereum-classic",
-            "bch": "bitcoin-cash",
-            "xmr": "monero",
-            "dash": "dash",
-            "zec": "zcash",
-            "neo": "neo",
-            "eos": "eos",
-        }
-        
-        coingecko_id = coingecko_ids.get(symbol_lower, symbol_lower)
+        coingecko_id = self.COINGECKO_ID_MAP.get(symbol_lower, symbol_lower)
         
         try:
-            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd"
+            url = f"{self.COINGECKO_API_URL}?ids={coingecko_id}&vs_currencies=usd"
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
