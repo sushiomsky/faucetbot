@@ -299,8 +299,7 @@ class FaucetBot:
                     results.append(result)
                     
                     # Add delay between claims to avoid rate limiting
-                    if result.success:
-                        time.sleep(1)
+                    time.sleep(1)
                 except Exception as e:
                     self.log(f"  Error claiming {currency}: {e}")
                     results.append(ClaimResult(
@@ -313,6 +312,8 @@ class FaucetBot:
             self.log(f"Error fetching faucet info: {e}")
         
         return results
+
+    def roll_faucet(self, currency: str, amount: str, win_chance: float) -> RollResult:
         """
         Roll the full faucet balance for a currency.
         
