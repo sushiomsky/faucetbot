@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faucetbot"
+version = "0.1.0"
+description = "DuckDice faucet roll automation bot - checks faucet balances, rolls at configured odds, cashouts and withdraws"
+readme = "README.md"
+authors = [{ name = "Dennis", email = "schnickfitzel1@gmail.com" }]
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+  "requests>=2.31.0",
+  "python-dotenv>=1.0.0",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Environment :: Console",
+  "Topic :: Utilities",
+]
+keywords = ["duckdice", "faucet", "crypto", "automation", "betting"]
+
+[project.urls]
+Homepage = "https://github.com/sushiomsky/faucetbot"
+Repository = "https://github.com/sushiomsky/faucetbot"
+
+[project.scripts]
+faucetbot = "faucetbot.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["faucetbot*"]
