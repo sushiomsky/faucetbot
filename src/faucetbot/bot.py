@@ -485,6 +485,11 @@ class FaucetBot:
                 iteration += 1
                 self.log(f"\n=== Pass {iteration} ===")
                 
+                # Claim faucets first
+                self.log("Claiming faucets...")
+                self.claim_all_faucets()
+                
+                # Then roll faucet balances
                 results = self.run_single_pass()
                 
                 # Check for successful cashout
