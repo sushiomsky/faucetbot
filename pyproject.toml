@@ -27,6 +27,9 @@ classifiers = [
 ]
 keywords = ["duckdice", "faucet", "crypto", "automation", "betting"]
 
+[project.optional-dependencies]
+browser = ["playwright>=1.40.0"]
+
 [project.urls]
 Homepage = "https://github.com/sushiomsky/faucetbot"
 Repository = "https://github.com/sushiomsky/faucetbot"

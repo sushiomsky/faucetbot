@@ -150,12 +150,28 @@ Environment Variables:
     roll_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     
     # claim command
-    claim_parser = subparsers.add_parser("claim", help="Claim faucet for a currency")
+    claim_parser = subparsers.add_parser("claim", help="Claim faucet for a currency (uses browser automation)")
     claim_parser.add_argument(
         "currency",
         nargs="?",
         default=None,
         help="Currency symbol (e.g., sol, btc). If not specified, tries all currencies.",
+    )
+    claim_parser.add_argument(
+        "--login",
+        action="store_true",
+        help="Open browser for manual login before claiming",
+    )
+    claim_parser.add_argument(
+        "--no-headless",
+        action="store_true",
+        help="Run browser in visible mode (not headless)",
+    )
+    claim_parser.add_argument(
+        "--session-dir",
+        type=str,
+        default=None,
+        help="Directory to persist browser session (enables login persistence)",
     )
     claim_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     
@@ -165,7 +181,17 @@ Environment Variables:
         parser.print_help()
         return 1
     
-    # Get API key
+    # Handle claim command first - it doesn't need API key (uses browser auth)
+    if parsed.command == "claim":
+        return cmd_claim(
+            currency=parsed.currency,
+            login=parsed.login,
+            headless=not parsed.no_headless,
+            session_dir=parsed.session_dir,
+            verbose=parsed.verbose,
+        )
+    
+    # All other commands require API key
     api_key = os.environ.get("DUCKDICE_API_KEY")
     if not api_key:
         print("Error: DUCKDICE_API_KEY environment variable is required", file=sys.stderr)
@@ -217,11 +243,6 @@ Environment Variables:
             verbose=parsed.verbose,
         )
         return cmd_roll(api, bot_config, parsed.currency, parsed.chance)
-    elif parsed.command == "claim":
-        bot_config = BotConfig(
-            verbose=parsed.verbose,
-        )
-        return cmd_claim(api, bot_config, parsed.currency)
     
     return 0
 
@@ -367,49 +388,85 @@ def cmd_roll(api: DuckDiceAPI, config: BotConfig, currency: str, win_chance: Opt
     return 0
 
 
-def cmd_claim(api: DuckDiceAPI, config: BotConfig, currency: Optional[str] = None) -> int:
-    """Claim faucet for a specific currency or all currencies."""
-    bot = FaucetBot(api, config)
+def cmd_claim(
+    currency: Optional[str] = None,
+    login: bool = False,
+    headless: bool = True,
+    session_dir: Optional[str] = None,
+    verbose: bool = False,
+) -> int:
+    """Claim faucet for a specific currency or all currencies using browser automation."""
+    try:
+        from .browser import BrowserFaucetClaimer, BrowserConfig, PLAYWRIGHT_AVAILABLE
+    except ImportError:
+        print("Error: Browser module not available", file=sys.stderr)
+        return 1
     
-    if currency:
-        # Claim specific currency
-        print(f"Claiming faucet for {currency.upper()}...")
-        try:
-            result = bot.claim_faucet(currency.lower())
-            print()
-            if result.success:
-                print(f"Success! Claimed {result.amount} {currency.upper()}")
-            else:
-                print(f"Failed to claim: {result.error}")
+    if not PLAYWRIGHT_AVAILABLE:
+        print("Error: Playwright is required for faucet claiming.", file=sys.stderr)
+        print("Install it with: pip install playwright && playwright install chromium", file=sys.stderr)
+        return 1
+    
+    config = BrowserConfig(
+        headless=headless,
+        user_data_dir=session_dir,
+        verbose=verbose,
+    )
+    
+    try:
+        with BrowserFaucetClaimer(config) as claimer:
+            # Handle login if requested
+            if login:
+                print("Opening browser for login...")
+                print("Please log in to DuckDice in the browser window.")
+                if not claimer.wait_for_login(timeout_sec=300):
+                    print("Login timeout. Please try again.", file=sys.stderr)
+                    return 1
+                print("Login successful!")
+                print()
+            
+            # Check if logged in
+            if not claimer.is_logged_in():
+                print("Error: Not logged in to DuckDice.", file=sys.stderr)
+                print("Please run with --login flag first, or use --session-dir to persist login.", file=sys.stderr)
+                print("Example: faucetbot claim --login --session-dir ~/.faucetbot-session", file=sys.stderr)
                 return 1
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-    else:
-        # Claim all available faucets
-        print("Claiming all available faucets...")
-        try:
-            results = bot.claim_all_faucets()
-            print()
             
-            successful = [r for r in results if r.success]
-            failed = [r for r in results if not r.success]
-            
-            if successful:
-                print(f"Successfully claimed {len(successful)} faucet(s):")
-                for r in successful:
-                    print(f"  {r.currency.upper()}: {r.amount}")
-            
-            if failed:
-                print(f"\nFailed to claim {len(failed)} faucet(s):")
-                for r in failed:
-                    print(f"  {r.currency.upper()}: {r.error}")
-            
-            if not results:
-                print("No faucets available to claim.")
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
+            if currency:
+                # Claim specific currency
+                print(f"Claiming faucet for {currency.upper()}...")
+                result = claimer.claim_faucet(currency)
+                print()
+                if result.success:
+                    print(f"Success! Claimed {result.amount} {currency.upper()}")
+                else:
+                    print(f"Failed to claim: {result.error}")
+                    return 1
+            else:
+                # Claim all available faucets
+                print("Claiming all available faucets...")
+                results = claimer.claim_all_faucets()
+                print()
+                
+                successful = [r for r in results if r.success]
+                failed = [r for r in results if not r.success]
+                
+                if successful:
+                    print(f"Successfully claimed {len(successful)} faucet(s):")
+                    for r in successful:
+                        print(f"  {r.currency}: {r.amount}")
+                
+                if failed:
+                    print(f"\nFailed to claim {len(failed)} faucet(s):")
+                    for r in failed:
+                        print(f"  {r.currency}: {r.error}")
+                
+                if not results:
+                    print("No faucets available to claim.")
+                    
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     
     return 0
 
