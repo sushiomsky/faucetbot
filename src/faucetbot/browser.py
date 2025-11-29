@@ -33,7 +33,7 @@ class BrowserConfig:
     headless: bool = True
     timeout_ms: int = 30000
     user_data_dir: Optional[str] = None  # Path to persist browser session
-    verbose: bool = True
+    verbose: bool = False
 
 
 @dataclass
@@ -271,12 +271,17 @@ class BrowserFaucetClaimer:
                 # Check if button is disabled (cooldown)
                 if claim_button.is_disabled():
                     # Try to get cooldown time
-                    cooldown_text = page.locator('[data-tooltip-content*="Next faucet"]').first.get_attribute('data-tooltip-content')
-                    if cooldown_text:
-                        match = re.search(r'(\d+):(\d+):(\d+)', cooldown_text)
-                        if match:
-                            h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                            result.cooldown_remaining = h * 3600 + m * 60 + s
+                    try:
+                        cooldown_elem = page.locator('[data-tooltip-content*="Next faucet"]').first
+                        cooldown_elem.wait_for(timeout=2000)
+                        cooldown_text = cooldown_elem.get_attribute('data-tooltip-content')
+                        if cooldown_text:
+                            match = re.search(r'(\d+):(\d+):(\d+)', cooldown_text)
+                            if match:
+                                h, m, s = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                                result.cooldown_remaining = h * 3600 + m * 60 + s
+                    except PlaywrightTimeout:
+                        pass  # Couldn't get cooldown info, continue with default
                     result.error = f"Faucet on cooldown ({result.cooldown_remaining}s remaining)"
                     return result
                 
@@ -352,8 +357,8 @@ class BrowserFaucetClaimer:
             try:
                 faucet_button.click()
                 page.wait_for_timeout(1000)
-            except:
-                pass
+            except Exception:
+                pass  # Modal might already be open
             
             # Get currencies from user balances or currency selector
             # This is implementation-specific and may need adjustment
@@ -365,7 +370,7 @@ class BrowserFaucetClaimer:
             
             if not currencies:
                 # Fallback: get from page content
-                # Look for common crypto symbols
+                # Look for common crypto symbols (update as needed)
                 common_currencies = ['BTC', 'ETH', 'LTC', 'DOGE', 'SOL', 'TRX', 'XRP', 'BNB', 'USDT']
                 page_content = page.content()
                 for curr in common_currencies:
@@ -413,29 +418,29 @@ class BrowserFaucetClaimer:
         if self._page and not self._page.is_closed():
             try:
                 self._page.close()
-            except:
-                pass
+            except Exception:
+                pass  # Ignore cleanup errors
             self._page = None
         
         if self._context:
             try:
                 self._context.close()
-            except:
-                pass
+            except Exception:
+                pass  # Ignore cleanup errors
             self._context = None
         
         if self._browser:
             try:
                 self._browser.close()
-            except:
-                pass
+            except Exception:
+                pass  # Ignore cleanup errors
             self._browser = None
         
         if self._playwright:
             try:
                 self._playwright.stop()
-            except:
-                pass
+            except Exception:
+                pass  # Ignore cleanup errors
             self._playwright = None
     
     def __enter__(self):
