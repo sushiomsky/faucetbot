@@ -4,7 +4,7 @@ Automated faucet claiming, roll, cashout, and withdrawal bot for [DuckDice.io](h
 
 ## Features
 
-- **Faucet Claiming**: Automatically claim free cryptocurrency from DuckDice faucets
+- **Browser-Based Faucet Claiming**: Claim free cryptocurrency using browser automation (bypasses Cloudflare)
 - **Progressive Win Chance Strategy**: Rolls faucets all-in with increasing odds (0.01%, 0.02%, 0.03%, ...)
 - **Faucet Balance Check**: Automatically detects all currencies with faucet balance
 - **All-In Roll**: Bets the full faucet balance for maximum potential gains
@@ -22,11 +22,11 @@ Automated faucet claiming, roll, cashout, and withdrawal bot for [DuckDice.io](h
 git clone https://github.com/sushiomsky/faucetbot.git
 cd faucetbot
 
-# Install in development mode
-pip install -e .
+# Install in development mode with browser support
+pip install -e ".[browser]"
 
-# Or install dependencies directly
-pip install requests python-dotenv
+# Install Playwright browsers
+playwright install chromium
 ```
 
 ## Configuration
@@ -38,7 +38,7 @@ cp .env.example .env
 
 2. Edit `.env` with your settings:
 ```bash
-# Required
+# Required for rolling/status/cashout (not needed for claiming)
 DUCKDICE_API_KEY=your-api-key-here
 
 # Optional - Progressive Win Chance Strategy
@@ -66,12 +66,28 @@ faucetbot status
 
 Shows all currencies with faucet balance and their USD values.
 
-### Claim Faucets
+### Claim Faucets (Browser-Based)
+
+Faucet claiming uses browser automation to bypass Cloudflare protection.
 
 ```bash
-faucetbot claim           # Claim all available faucets
-faucetbot claim sol       # Claim faucet for specific currency (e.g., SOL)
+# First-time login (opens browser for manual login)
+faucetbot claim --login --session-dir ~/.faucetbot-session
+
+# Subsequent claims (uses saved session)
+faucetbot claim --session-dir ~/.faucetbot-session
+
+# Claim specific currency
+faucetbot claim sol --session-dir ~/.faucetbot-session
+
+# Run in visible browser mode (not headless)
+faucetbot claim --no-headless --session-dir ~/.faucetbot-session
 ```
+
+**Important Notes:**
+- The `--login` flag opens a browser window for manual login
+- Use `--session-dir` to persist your login session between runs
+- The faucet API is protected by Cloudflare, so browser automation is required
 
 Claims free cryptocurrency from the DuckDice faucet. Each currency can be claimed once per minute (approximately 45-50 faucets available daily).
 
