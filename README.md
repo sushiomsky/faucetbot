@@ -6,6 +6,7 @@ Automated faucet claiming, roll, cashout, and withdrawal bot for [DuckDice.io](h
 
 - **Faucet Claiming**: Automatically claim free cryptocurrency from DuckDice faucets
 - **Progressive Win Chance Strategy**: Rolls faucets all-in with increasing odds (0.01%, 0.02%, 0.03%, ...)
+- **Normal Mode (Junkhead Strategy)**: Percentage-based betting with mixed low-risk and high-risk bets
 - **Faucet Balance Check**: Automatically detects all currencies with faucet balance
 - **All-In Roll**: Bets the full faucet balance for maximum potential gains
 - **Auto Cashout**: Transfers faucet balance to main balance when USD threshold is met
@@ -41,9 +42,18 @@ cp .env.example .env
 # Required
 DUCKDICE_API_KEY=your-api-key-here
 
-# Optional - Progressive Win Chance Strategy
+# Optional - Progressive Win Chance Strategy (Faucet Mode)
 FAUCET_BASE_WIN_CHANCE=0.01       # Base win chance for 1st faucet (default: 0.01%)
 FAUCET_WIN_CHANCE_INCREMENT=0.01  # Increment per faucet (default: 0.01%)
+
+# Optional - Normal Mode (Junkhead Strategy)
+NORMAL_LOW_RISK_WIN_CHANCE=49.5   # Low-risk win chance (~2.0x payout)
+NORMAL_LOW_RISK_BET_PERCENT=5.0   # Low-risk bet as % of balance
+NORMAL_HIGH_RISK_WIN_CHANCE=12.0  # High-risk win chance (~8.2x payout)
+NORMAL_HIGH_RISK_BET_PERCENT=1.0  # High-risk bet as % of balance
+NORMAL_HIGH_RISK_FREQUENCY=5      # High-risk bet every N bets
+NORMAL_STOP_LOSS_PERCENT=50       # Stop if balance drops 50%
+NORMAL_TAKE_PROFIT_PERCENT=50     # Stop if balance increases 50%
 
 # Optional - Cashout
 FAUCET_CASHOUT_MIN_USD=20.0       # Min USD to trigger cashout (default: 20)
@@ -111,6 +121,32 @@ faucetbot roll btc --chance 1.5  # Roll with custom 1.5% win chance
 
 Roll only a specific currency's faucet balance.
 
+### Normal Mode (Junkhead Strategy)
+
+```bash
+faucetbot normal btc                    # Run normal mode for BTC
+faucetbot normal eth --max-bets 20      # Limit to 20 bets
+faucetbot normal sol --stop-loss 30     # Stop at 30% loss
+faucetbot normal btc --take-profit 100  # Stop at 100% profit
+```
+
+Normal mode uses percentage-based bet sizing with the main balance (not faucet). It implements the "Junkhead Strategy" which combines:
+
+- **Low-Risk Bets**: ~2.0x payout (49.5% win chance), betting 5% of balance
+- **High-Risk Bets**: ~8.2x payout (12% win chance), betting 1% of balance
+- **Direction Alternation**: Alternates between over/under to avoid streaks
+
+Options:
+- `--max-bets N`: Maximum number of bets per session (default: 50)
+- `--low-risk-chance PCT`: Low-risk win chance % (default: 49.5)
+- `--low-risk-percent PCT`: Low-risk bet as % of balance (default: 5.0)
+- `--high-risk-chance PCT`: High-risk win chance % (default: 12.0)
+- `--high-risk-percent PCT`: High-risk bet as % of balance (default: 1.0)
+- `--high-risk-frequency N`: High-risk bet every N bets (default: 5, 0 to disable)
+- `--stop-loss PCT`: Stop if balance drops by this % (default: 50)
+- `--take-profit PCT`: Stop if balance increases by this % (default: 50)
+- `--no-alternate`: Disable direction alternation
+
 ### Override Settings
 
 ```bash
@@ -123,7 +159,7 @@ faucetbot run --base-chance 0.02 --chance-increment 0.02 --cashout-min 10
 
 ## How It Works
 
-### Progressive Win Chance Strategy
+### Progressive Win Chance Strategy (Faucet Mode)
 
 The bot uses a progressive betting strategy where each faucet is rolled with an increasing win chance:
 
@@ -137,11 +173,26 @@ The bot uses a progressive betting strategy where each faucet is rolled with an 
 
 This strategy aims for high-payout wins while spreading risk across multiple low-probability bets.
 
+### Normal Mode (Junkhead Strategy)
+
+Based on successful betting patterns, this mode uses percentage-based bet sizing:
+
+| Strategy   | Win Chance | Payout | Bet Size | Frequency |
+|------------|------------|--------|----------|-----------|
+| Low-Risk   | 49.5%      | ~2.0x  | 5%       | Most bets |
+| High-Risk  | 12.0%      | ~8.2x  | 1%       | Every 5th |
+
+Key features:
+- **Percentage-based sizing**: Bet size adjusts to current balance
+- **Risk management**: Stop-loss and take-profit triggers
+- **Direction alternation**: Reduces streak impact
+- **Capital preservation**: Small high-risk bets minimize losses
+
 ### Faucet Claiming
 
 The bot can automatically claim faucets using the `faucetbot claim` command. There are typically 40-55 faucets available daily across different cryptocurrencies with a 60-second cooldown between claims per currency.
 
-### Bot Workflow
+### Bot Workflow (Faucet Mode)
 
 1. **Claim Faucets**: Optionally claim free cryptocurrency from available faucets
 2. **Check Balances**: Bot queries the API for all currency balances

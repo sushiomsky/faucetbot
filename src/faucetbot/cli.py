@@ -14,7 +14,7 @@ except ImportError:
     load_dotenv = None
 
 from .api import DuckDiceAPI, DuckDiceConfig
-from .bot import FaucetBot, BotConfig
+from .bot import FaucetBot, BotConfig, BetMode, NormalModeConfig
 
 
 def get_env_float(key: str, default: float) -> float:
@@ -66,13 +66,22 @@ Examples:
   faucetbot status               # Show current faucet balances
   faucetbot roll btc             # Roll specific currency only
   faucetbot roll btc --chance 1  # Roll with custom 1% win chance
+  faucetbot normal btc           # Run normal mode (Junkhead strategy)
+  faucetbot normal btc --max-bets 20  # Limit to 20 bets
 
-Progressive Strategy:
+Progressive Strategy (faucet mode):
   Faucets are rolled all-in with increasing win chances:
   - 1st faucet: 0.01% (base chance)
   - 2nd faucet: 0.02% (base + increment)
   - 3rd faucet: 0.03% (base + 2*increment)
   - And so on...
+
+Normal Mode (Junkhead Strategy):
+  Bets with main balance using percentage-based sizing:
+  - Low-Risk: ~2.0x payout (49.5% win), 5% of balance
+  - High-Risk: ~8.2x payout (12% win), 1% of balance
+  - High-risk bets placed every N low-risk bets
+  - Alternates between over/under directions
 
 Environment Variables:
   DUCKDICE_API_KEY              API key (required)
@@ -85,6 +94,16 @@ Environment Variables:
   WITHDRAWAL_ADDRESS            Wallet address for withdrawal
   WITHDRAWAL_MIN_USD            Min USD for withdrawal (default: 20)
   REQUEST_DELAY_MS              Delay between requests (default: 1000)
+  
+  # Normal Mode Environment Variables
+  NORMAL_LOW_RISK_WIN_CHANCE    Low-risk win chance % (default: 49.5)
+  NORMAL_LOW_RISK_BET_PERCENT   Low-risk bet size % of balance (default: 5.0)
+  NORMAL_HIGH_RISK_WIN_CHANCE   High-risk win chance % (default: 12.0)
+  NORMAL_HIGH_RISK_BET_PERCENT  High-risk bet size % of balance (default: 1.0)
+  NORMAL_HIGH_RISK_FREQUENCY    High-risk bet every N bets (default: 5)
+  NORMAL_MAX_BETS               Max bets per session (default: 50)
+  NORMAL_STOP_LOSS_PERCENT      Stop loss % (default: 50)
+  NORMAL_TAKE_PROFIT_PERCENT    Take profit % (default: 50)
         """,
     )
     
@@ -159,6 +178,67 @@ Environment Variables:
     )
     claim_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     
+    # normal command (Junkhead strategy)
+    normal_parser = subparsers.add_parser(
+        "normal",
+        help="Run normal mode betting (Junkhead strategy) with percentage-based bet sizing"
+    )
+    normal_parser.add_argument("currency", help="Currency symbol to bet with (e.g., btc, eth)")
+    normal_parser.add_argument(
+        "--max-bets",
+        type=int,
+        default=None,
+        help="Maximum number of bets (default: 50)",
+    )
+    normal_parser.add_argument(
+        "--low-risk-chance",
+        type=float,
+        default=None,
+        help="Low-risk win chance %% (default: 49.5 for ~2.0x payout)",
+    )
+    normal_parser.add_argument(
+        "--low-risk-percent",
+        type=float,
+        default=None,
+        help="Low-risk bet size as %% of balance (default: 5.0)",
+    )
+    normal_parser.add_argument(
+        "--high-risk-chance",
+        type=float,
+        default=None,
+        help="High-risk win chance %% (default: 12.0 for ~8.2x payout)",
+    )
+    normal_parser.add_argument(
+        "--high-risk-percent",
+        type=float,
+        default=None,
+        help="High-risk bet size as %% of balance (default: 1.0)",
+    )
+    normal_parser.add_argument(
+        "--high-risk-frequency",
+        type=int,
+        default=None,
+        help="Place high-risk bet every N bets (default: 5, 0 to disable)",
+    )
+    normal_parser.add_argument(
+        "--stop-loss",
+        type=float,
+        default=None,
+        help="Stop loss percentage (default: 50)",
+    )
+    normal_parser.add_argument(
+        "--take-profit",
+        type=float,
+        default=None,
+        help="Take profit percentage (default: 50)",
+    )
+    normal_parser.add_argument(
+        "--no-alternate",
+        action="store_true",
+        help="Disable direction alternation (always bet one direction)",
+    )
+    normal_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    
     parsed = parser.parse_args(args)
     
     if not parsed.command:
@@ -222,6 +302,28 @@ Environment Variables:
             verbose=parsed.verbose,
         )
         return cmd_claim(api, bot_config, parsed.currency)
+    elif parsed.command == "normal":
+        # Create normal mode config
+        normal_config = NormalModeConfig(
+            low_risk_win_chance=parsed.low_risk_chance or get_env_float("NORMAL_LOW_RISK_WIN_CHANCE", 49.5),
+            low_risk_bet_percent=parsed.low_risk_percent or get_env_float("NORMAL_LOW_RISK_BET_PERCENT", 5.0),
+            high_risk_win_chance=parsed.high_risk_chance or get_env_float("NORMAL_HIGH_RISK_WIN_CHANCE", 12.0),
+            high_risk_bet_percent=parsed.high_risk_percent or get_env_float("NORMAL_HIGH_RISK_BET_PERCENT", 1.0),
+            high_risk_frequency=parsed.high_risk_frequency if parsed.high_risk_frequency is not None else get_env_int("NORMAL_HIGH_RISK_FREQUENCY", 5),
+            alternate_direction=not parsed.no_alternate,
+            max_bets_per_session=parsed.max_bets or get_env_int("NORMAL_MAX_BETS", 50),
+            stop_loss_percent=parsed.stop_loss or get_env_float("NORMAL_STOP_LOSS_PERCENT", 50.0),
+            take_profit_percent=parsed.take_profit or get_env_float("NORMAL_TAKE_PROFIT_PERCENT", 50.0),
+        )
+        bot_config = BotConfig(
+            mode=BetMode.NORMAL,
+            normal_mode=normal_config,
+            auto_withdraw=get_env_bool("AUTO_WITHDRAW", False),
+            withdrawal_address=os.environ.get("WITHDRAWAL_ADDRESS", ""),
+            withdrawal_min_usd=get_env_float("WITHDRAWAL_MIN_USD", 20.0),
+            verbose=parsed.verbose,
+        )
+        return cmd_normal(api, bot_config, parsed.currency, parsed.max_bets)
     
     return 0
 
@@ -410,6 +512,72 @@ def cmd_claim(api: DuckDiceAPI, config: BotConfig, currency: Optional[str] = Non
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+    
+    return 0
+
+
+def cmd_normal(
+    api: DuckDiceAPI,
+    config: BotConfig,
+    currency: str,
+    max_bets: Optional[int] = None,
+) -> int:
+    """Run normal mode betting session with Junkhead strategy."""
+    bot = FaucetBot(api, config)
+    
+    print(f"Starting Normal Mode (Junkhead Strategy) for {currency.upper()}...")
+    print()
+    print("Strategy Settings:")
+    print(f"  Low-Risk: {config.normal_mode.low_risk_win_chance}% win chance, {config.normal_mode.low_risk_bet_percent}% bet size")
+    print(f"  High-Risk: {config.normal_mode.high_risk_win_chance}% win chance, {config.normal_mode.high_risk_bet_percent}% bet size")
+    print(f"  High-Risk Frequency: Every {config.normal_mode.high_risk_frequency} bets")
+    print(f"  Direction Alternation: {'Enabled' if config.normal_mode.alternate_direction else 'Disabled'}")
+    print(f"  Stop Loss: {config.normal_mode.stop_loss_percent}%")
+    print(f"  Take Profit: {config.normal_mode.take_profit_percent}%")
+    print(f"  Max Bets: {max_bets or config.normal_mode.max_bets_per_session}")
+    print()
+    
+    try:
+        results = bot.run_normal_mode_session(currency.lower(), max_bets)
+        
+        if not results:
+            print("\nNo bets were placed. Check if you have balance for this currency.")
+            return 1
+        
+        # Print summary
+        print()
+        print("=" * 50)
+        print("Final Results:")
+        wins = sum(1 for r in results if r.win)
+        losses = len(results) - wins
+        total_profit = sum(float(r.profit) for r in results)
+        
+        print(f"  Total bets: {len(results)}")
+        print(f"  Wins: {wins} ({wins/len(results)*100:.1f}%)")
+        print(f"  Losses: {losses} ({losses/len(results)*100:.1f}%)")
+        print(f"  Total profit: {total_profit:.8f}")
+        
+        low_risk_bets = [r for r in results if r.strategy and r.strategy.value == "low_risk"]
+        high_risk_bets = [r for r in results if r.strategy and r.strategy.value == "high_risk"]
+        
+        if low_risk_bets:
+            low_wins = sum(1 for r in low_risk_bets if r.win)
+            print(f"  Low-Risk: {low_wins}/{len(low_risk_bets)} wins ({low_wins/len(low_risk_bets)*100:.1f}%)")
+        
+        if high_risk_bets:
+            high_wins = sum(1 for r in high_risk_bets if r.win)
+            print(f"  High-Risk: {high_wins}/{len(high_risk_bets)} wins ({high_wins/len(high_risk_bets)*100:.1f}%)")
+        
+        if results:
+            final_balance = results[-1].new_main_balance
+            final_usd = results[-1].usd_value
+            print(f"  Final balance: {final_balance} (~${final_usd:.2f} USD)")
+        
+    except KeyboardInterrupt:
+        print("\nSession stopped by user.")
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     
     return 0
 
