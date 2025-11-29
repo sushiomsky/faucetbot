@@ -7,10 +7,31 @@ This bot automates the process of:
 3. Rolling the faucet balance with configured win odds
 4. Cashing out faucet balance to main balance when above threshold
 5. Optionally withdrawing from main balance to external wallet
+6. Normal mode betting with the Junkhead strategy
 """
 
 from .api import DuckDiceAPI, DuckDiceConfig
-from .bot import FaucetBot, ClaimResult
+from .bot import (
+    FaucetBot,
+    ClaimResult,
+    RollResult,
+    BotConfig,
+    BetMode,
+    BetStrategy,
+    NormalModeConfig,
+    NormalModeSession,
+)
 
 __version__ = "0.1.0"
-__all__ = ["DuckDiceAPI", "DuckDiceConfig", "FaucetBot", "ClaimResult"]
+__all__ = [
+    "DuckDiceAPI",
+    "DuckDiceConfig",
+    "FaucetBot",
+    "ClaimResult",
+    "RollResult",
+    "BotConfig",
+    "BetMode",
+    "BetStrategy",
+    "NormalModeConfig",
+    "NormalModeSession",
+]
