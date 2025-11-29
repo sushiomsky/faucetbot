@@ -33,6 +33,8 @@ class DuckDiceAPI:
     def __init__(self, config: DuckDiceConfig):
         self.config = config
         self.session = requests.Session()
+        # Derive origin from base_url (remove /api suffix if present)
+        origin = config.base_url.rsplit('/api', 1)[0]
         self.session.headers.update(
             {
                 "Content-Type": "application/json",
@@ -41,8 +43,8 @@ class DuckDiceAPI:
                 "Accept-Language": "en-US,en;q=0.9",
                 "Accept-Encoding": "gzip, deflate, br",
                 "Cache-Control": "no-cache",
-                "Origin": "https://duckdice.io",
-                "Referer": "https://duckdice.io/",
+                "Origin": origin,
+                "Referer": f"{origin}/",
             }
         )
         self._last_request_time = 0.0
