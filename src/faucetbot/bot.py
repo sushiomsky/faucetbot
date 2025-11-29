@@ -773,6 +773,8 @@ class FaucetBot:
             self.log(f"Balance change: {change:+.1f}%")
         
         return results
+
+    def run_single_pass(self) -> List[RollResult]:
         """
         Run a single pass over all faucet balances.
         
