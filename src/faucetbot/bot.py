@@ -502,16 +502,19 @@ class FaucetBot:
             currencies = self.api.get_currencies()
             for curr in currencies:
                 if curr.get("symbol", "").lower() == currency.lower():
-                    # Try different possible field names for min bet
-                    min_bet = curr.get("minBet") or curr.get("min_bet") or curr.get("minAmount")
-                    if min_bet is not None:
-                        return self._to_decimal(min_bet)
+                    # Try different possible field names for min bet from API
+                    for field_name in ["minBet", "min_bet", "minAmount"]:
+                        min_bet = curr.get(field_name)
+                        if min_bet is not None:
+                            self.log(f"Found minimum bet for {currency}: {min_bet} (from {field_name})")
+                            return self._to_decimal(min_bet)
                     break
         except Exception as e:
             self.log(f"Warning: Failed to fetch minimum bet for {currency}: {e}")
         
         # Default fallback minimum bets based on common cryptocurrencies
-        # These are conservative estimates to avoid API errors
+        # These are conservative estimates based on typical exchange minimums.
+        # Note: These may need adjustment if API policies change.
         default_mins = {
             "btc": Decimal("0.00000001"),
             "eth": Decimal("0.0000001"),
@@ -524,7 +527,9 @@ class FaucetBot:
             "bnb": Decimal("0.00001"),
             "xrp": Decimal("0.001"),
         }
-        return default_mins.get(currency.lower(), Decimal("0.00000001"))
+        fallback_min = default_mins.get(currency.lower(), Decimal("0.00000001"))
+        self.log(f"Using fallback minimum bet for {currency}: {fallback_min}")
+        return fallback_min
 
     def _calculate_bet_amount(
         self,
