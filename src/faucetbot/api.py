@@ -36,9 +36,13 @@ class DuckDiceAPI:
         self.session.headers.update(
             {
                 "Content-Type": "application/json",
-                "User-Agent": "FaucetBot/1.0.0",
-                "Accept": "*/*",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
                 "Cache-Control": "no-cache",
+                "Origin": "https://duckdice.io",
+                "Referer": "https://duckdice.io/",
             }
         )
         self._last_request_time = 0.0
