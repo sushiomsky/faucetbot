@@ -485,6 +485,47 @@ class FaucetBot:
                 return self._to_decimal(bal.get("main", 0))
         return Decimal(0)
 
+    def _get_minimum_bet(self, currency: str) -> Decimal:
+        """
+        Get the minimum bet amount for a specific currency.
+        
+        Fetches from the currencies API endpoint which includes min bet info.
+        Falls back to a reasonable default if not available.
+        
+        Args:
+            currency: Currency symbol (e.g., 'btc', 'eth')
+            
+        Returns:
+            Minimum bet amount as Decimal
+        """
+        try:
+            currencies = self.api.get_currencies()
+            for curr in currencies:
+                if curr.get("symbol", "").lower() == currency.lower():
+                    # Try different possible field names for min bet
+                    min_bet = curr.get("minBet") or curr.get("min_bet") or curr.get("minAmount")
+                    if min_bet is not None:
+                        return self._to_decimal(min_bet)
+                    break
+        except Exception as e:
+            self.log(f"Warning: Failed to fetch minimum bet for {currency}: {e}")
+        
+        # Default fallback minimum bets based on common cryptocurrencies
+        # These are conservative estimates to avoid API errors
+        default_mins = {
+            "btc": Decimal("0.00000001"),
+            "eth": Decimal("0.0000001"),
+            "ltc": Decimal("0.000001"),
+            "doge": Decimal("0.01"),
+            "trx": Decimal("0.1"),
+            "usdt": Decimal("0.0001"),
+            "usdc": Decimal("0.0001"),
+            "sol": Decimal("0.000001"),
+            "bnb": Decimal("0.00001"),
+            "xrp": Decimal("0.001"),
+        }
+        return default_mins.get(currency.lower(), Decimal("0.00000001"))
+
     def _calculate_bet_amount(
         self,
         balance: Decimal,
@@ -536,6 +577,7 @@ class FaucetBot:
         self,
         currency: str,
         session: NormalModeSession,
+        min_bet_required: Optional[Decimal] = None,
     ) -> RollResult:
         """
         Place a single bet in normal mode using the Junkhead strategy.
@@ -547,6 +589,7 @@ class FaucetBot:
         Args:
             currency: Currency symbol
             session: Session state tracking balance and bet count
+            min_bet_required: Minimum bet amount required by the API (optional)
             
         Returns:
             RollResult with bet outcome
@@ -567,6 +610,10 @@ class FaucetBot:
         
         # Calculate bet amount as percentage of current balance
         bet_amount = self._calculate_bet_amount(session.current_balance, bet_percent)
+        
+        # Ensure bet amount meets minimum requirement
+        if min_bet_required is not None and bet_amount < min_bet_required:
+            bet_amount = min_bet_required
         
         # Get bet direction
         is_high = self._get_bet_direction(session)
@@ -711,15 +758,31 @@ class FaucetBot:
             self.log(f"No main balance found for {currency.upper()}")
             return results
         
+        # Get minimum bet for this currency
+        min_bet_required = self._get_minimum_bet(currency)
+        
         usd_value = self._calculate_usd_value(initial_balance, currency)
         
         self.log(f"\n=== Starting Normal Mode Session ===")
         self.log(f"Currency: {currency.upper()}")
         self.log(f"Initial balance: {initial_balance} (~${usd_value:.2f} USD)")
+        self.log(f"Minimum bet: {min_bet_required}")
         self.log(f"Low-risk: {self.config.normal_mode.low_risk_win_chance}% win, {self.config.normal_mode.low_risk_bet_percent}% bet")
         self.log(f"High-risk: {self.config.normal_mode.high_risk_win_chance}% win, {self.config.normal_mode.high_risk_bet_percent}% bet")
         self.log(f"High-risk frequency: every {self.config.normal_mode.high_risk_frequency} bets")
         self.log(f"Stop-loss: {self.config.normal_mode.stop_loss_percent}%, Take-profit: {self.config.normal_mode.take_profit_percent}%")
+        
+        # Check if balance can support minimum bets with current strategy
+        smallest_percent = min(
+            self.config.normal_mode.low_risk_bet_percent,
+            self.config.normal_mode.high_risk_bet_percent
+        )
+        calculated_min_bet = self._calculate_bet_amount(initial_balance, smallest_percent)
+        
+        if calculated_min_bet < min_bet_required:
+            self.log(f"\nWarning: Calculated bet ({calculated_min_bet}) is below minimum ({min_bet_required})")
+            self.log(f"Balance too small for current bet percentages. Need more funds or adjust bet size.")
+            return results
         
         # Initialize session
         session = NormalModeSession(
@@ -737,18 +800,18 @@ class FaucetBot:
                     self.log(f"\n{reason}")
                     break
                 
-                # Check if balance is too low to bet
-                min_bet = self._calculate_bet_amount(
+                # Check if balance is too low to meet minimum bet requirement
+                calculated_bet = self._calculate_bet_amount(
                     session.current_balance,
                     min(self.config.normal_mode.low_risk_bet_percent, 
                         self.config.normal_mode.high_risk_bet_percent)
                 )
-                if min_bet <= 0:
-                    self.log("\nBalance too low to continue betting")
+                if calculated_bet < min_bet_required:
+                    self.log(f"\nBalance too low to meet minimum bet ({min_bet_required} {currency.upper()})")
                     break
                 
                 # Place bet
-                result = self.roll_normal_mode(currency, session)
+                result = self.roll_normal_mode(currency, session, min_bet_required)
                 results.append(result)
                 
                 # Small delay between bets
